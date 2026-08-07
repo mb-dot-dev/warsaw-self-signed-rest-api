@@ -77,11 +77,15 @@ def _lambda_env(
 @pytest.fixture(autouse=True)
 def _reset_config_cache() -> None:
     from app.auth import get_auth_config, get_client_public_key
+    from app.jwt import get_jwt_config, get_signing_kid, get_signing_public_key
 
     reset_config()
     init_config.cache_clear()
     get_auth_config.cache_clear()
     get_client_public_key.cache_clear()
+    get_jwt_config.cache_clear()
+    get_signing_public_key.cache_clear()
+    get_signing_kid.cache_clear()
 
 
 class LambdaContext:
