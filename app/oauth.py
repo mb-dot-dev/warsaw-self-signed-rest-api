@@ -36,6 +36,18 @@ def _error(status_code: int, error: str, description: str) -> Response:
     )
 
 
+def _misconfigured_error(log_message: str) -> Response:
+    # A bad key in configuration — client or signing side — is a server-side
+    # misconfiguration, not a bad client credential. Logged at exception level so the
+    # stack trace reaches the operator; the response body stays as generic as any other
+    # error here, and the status code stays a 5xx so clients don't mistake a broken
+    # deployment for their own invalid credentials.
+    metrics.add_metric(name="ClientAuthFailure", unit=MetricUnit.Count, value=1)
+    metrics.add_dimension(name="reason", value=REASON_MISCONFIGURED)
+    logger.exception(log_message)
+    return _error(500, "server_error", "The server encountered an unexpected error")
+
+
 def _parse_token_request(body: str, content_type: str) -> dict[str, str]:
     if "application/json" in content_type:
         try:
@@ -71,34 +83,34 @@ def issue_token() -> Response:
         logger.warning("Client assertion rejected", extra={"reason": error.reason})
         return _error(401, "invalid_client", "Client authentication failed")
     except jwt.InvalidKeyError, OSError:
-        # The configured client public key is missing or unreadable — a server-side
-        # misconfiguration, not a bad client credential. Logged at exception level so the
-        # stack trace reaches the operator; the response body stays as generic as any
-        # other error here, and the status code stays a 5xx so clients don't mistake a
-        # broken deployment for their own invalid credentials.
-        metrics.add_metric(name="ClientAuthFailure", unit=MetricUnit.Count, value=1)
-        metrics.add_dimension(name="reason", value=REASON_MISCONFIGURED)
-        logger.exception("Client authentication failed due to a server misconfiguration")
-        return _error(500, "server_error", "The server encountered an unexpected error")
+        # The configured client public key is missing or unreadable.
+        return _misconfigured_error("Client authentication failed due to a server misconfiguration")
 
-    jwt_config = get_jwt_config()
-    now = int(time.time())
-    claims = {
-        "iss": jwt_config.issuer,
-        "sub": client_id,
-        "azp": client_id,
-        "aud": jwt_config.audience,
-        "iat": now,
-        "exp": now + jwt_config.token_ttl_seconds,
-        "jti": str(uuid.uuid4()),
-        "scp": ["openid"],
-    }
-    token = jwt.encode(
-        claims,
-        jwt_config.private_key,
-        algorithm="RS256",
-        headers={"kid": get_signing_kid()},
-    )
+    try:
+        jwt_config = get_jwt_config()
+        now = int(time.time())
+        claims = {
+            "iss": jwt_config.issuer,
+            "sub": client_id,
+            "azp": client_id,
+            "aud": jwt_config.audience,
+            "iat": now,
+            "exp": now + jwt_config.token_ttl_seconds,
+            "jti": str(uuid.uuid4()),
+            "scp": ["openid"],
+        }
+        token = jwt.encode(
+            claims,
+            jwt_config.private_key,
+            algorithm="RS256",
+            headers={"kid": get_signing_kid()},
+        )
+    except ValueError:
+        # The configured signing private key is missing or malformed (e.g. `cryptography`
+        # rejecting an unparseable PEM while deriving the public key/kid). Mirrors the
+        # client-key handling above — same failure mode, same clean 500 instead of an
+        # unhandled exception surfacing as an opaque Lambda 502.
+        return _misconfigured_error("Token issuance failed due to a server misconfiguration")
 
     logger.info("Access token issued", extra={"clientId": client_id})
     return Response(

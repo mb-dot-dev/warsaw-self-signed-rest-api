@@ -261,6 +261,10 @@ def test_issue_token_returns_server_error_when_client_public_key_file_is_missing
     lambda_context: LambdaContext,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app import oauth
+
+    dimensions: list[tuple[str, str]] = []
+    monkeypatch.setattr(oauth.metrics, "add_dimension", lambda *, name, value: dimensions.append((name, value)))
     monkeypatch.setenv("AUTH__CLIENT_PUBLIC_KEY_PATH", "/nonexistent/path/does-not-exist.pem")
 
     event = make_event("POST", "/oauth/token", headers={"Content-Type": FORM}, body=_token_request(make_assertion()))
@@ -269,6 +273,7 @@ def test_issue_token_returns_server_error_when_client_public_key_file_is_missing
 
     assert response["statusCode"] == 500
     assert json.loads(response["body"])["error"] == "server_error"
+    assert ("reason", "Misconfigured") in dimensions
 
 
 def test_issue_token_returns_server_error_when_client_public_key_is_garbage(
@@ -278,6 +283,11 @@ def test_issue_token_returns_server_error_when_client_public_key_is_garbage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from app import oauth
+
+    dimensions: list[tuple[str, str]] = []
+    monkeypatch.setattr(oauth.metrics, "add_dimension", lambda *, name, value: dimensions.append((name, value)))
+
     bad_key_path = tmp_path / "garbage.pem"
     bad_key_path.write_text("this is not a PEM key", encoding="utf-8")
     monkeypatch.setenv("AUTH__CLIENT_PUBLIC_KEY_PATH", str(bad_key_path))
@@ -288,3 +298,28 @@ def test_issue_token_returns_server_error_when_client_public_key_is_garbage(
 
     assert response["statusCode"] == 500
     assert json.loads(response["body"])["error"] == "server_error"
+    assert ("reason", "Misconfigured") in dimensions
+
+
+def test_issue_token_returns_server_error_when_signing_private_key_is_malformed(
+    make_event: Callable[..., dict[str, Any]],
+    make_assertion: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mirrors the client-key misconfiguration tests above: a corrupt signing key is the
+    # same class of operator fault as a corrupt client key, and must fail the same clean way
+    # (500 server_error, Misconfigured metric) rather than an unhandled 502.
+    from app import oauth
+
+    dimensions: list[tuple[str, str]] = []
+    monkeypatch.setattr(oauth.metrics, "add_dimension", lambda *, name, value: dimensions.append((name, value)))
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+
+    event = make_event("POST", "/oauth/token", headers={"Content-Type": FORM}, body=_token_request(make_assertion()))
+
+    response = lambda_handler(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"])["error"] == "server_error"
+    assert ("reason", "Misconfigured") in dimensions
