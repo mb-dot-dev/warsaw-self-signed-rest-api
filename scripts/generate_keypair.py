@@ -11,35 +11,23 @@ Private keys are written to the gitignored out/ directory and must never be comm
 from __future__ import annotations
 
 import argparse
-import base64
-import hashlib
-import json
 from pathlib import Path
 import sys
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from jwt.algorithms import RSAAlgorithm
+
+# This project is a "virtual" uv project (no build-system, never installed into the venv), so
+# when this file is run directly as `uv run scripts/generate_keypair.py`, Python puts scripts/
+# on sys.path[0] instead of the repo root and `app` is not importable. Fix that up before
+# reaching for it, so the documented invocation keeps working without an editable install.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.keys import compute_kid
 
 DEFAULT_KEY_SIZE = 2048
 PUBLIC_EXPONENT = 65537
 PRIVATE_KEY_MODE = 0o600
-
-
-def compute_kid(public_key_pem: str) -> str:
-    """Return the RFC 7638 JWK thumbprint of an RSA public key."""
-    public_key = serialization.load_pem_public_key(public_key_pem.encode())
-    if not isinstance(public_key, rsa.RSAPublicKey):
-        msg = "expected an RSA public key"
-        raise TypeError(msg)
-    jwk = RSAAlgorithm.to_jwk(public_key, as_dict=True)
-    canonical = json.dumps(
-        {"e": jwk["e"], "kty": jwk["kty"], "n": jwk["n"]},
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    digest = hashlib.sha256(canonical.encode()).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 def _check_can_write(*paths: Path, force: bool) -> None:
