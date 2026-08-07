@@ -1,0 +1,15 @@
+producer:
+  queue_url: ""
+
+jwt:
+  private_key: ""
+  issuer: "https://auth.molnarbence.dev/"
+  audience: "api://default"
+  token_ttl_seconds: 3600
+  leeway_seconds: 30
+
+auth:
+  allowed_client_id: ""
+  client_public_key_path: "app/keys/client_public.pem"
+  max_assertion_lifetime_seconds: 300
+  leeway_seconds: 30
