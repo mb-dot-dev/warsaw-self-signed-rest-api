@@ -64,8 +64,8 @@ build-lambda-package: install-pip-ci  ## Build lambda package.
 
 .PHONY: keypair-client
 keypair-client:  ## Generate the client keypair; public into the package, private into out/.
-	uv run scripts/generate_keypair.py --name client --public-out app/keys/client_public.pem
+	uv run python -m scripts.generate_keypair --name client --public-out app/keys/client_public.pem
 
 .PHONY: keypair-signing
 keypair-signing:  ## Generate warsaw's token-signing keypair; upload the private half to SSM.
-	uv run scripts/generate_keypair.py --name warsaw
+	uv run python -m scripts.generate_keypair --name warsaw

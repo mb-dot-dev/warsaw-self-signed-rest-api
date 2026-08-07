@@ -2,10 +2,15 @@
 
 Run once per keypair:
 
-    uv run scripts/generate_keypair.py --name client --public-out app/keys/client_public.pem
-    uv run scripts/generate_keypair.py --name warsaw
+    uv run python -m scripts.generate_keypair --name client --public-out app/keys/client_public.pem
+    uv run python -m scripts.generate_keypair --name warsaw
 
 Private keys are written to the gitignored out/ directory and must never be committed.
+
+Note: this must be run as a module (`-m scripts.generate_keypair`), not as a script path
+(`scripts/generate_keypair.py`). This project is a uv "virtual" project (no build-system, never
+installed into the venv); module invocation puts the repo-root working directory on sys.path so
+`app` is importable, while running the file by path would put scripts/ on sys.path instead.
 """
 
 from __future__ import annotations
@@ -16,12 +21,6 @@ import sys
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
-# This project is a "virtual" uv project (no build-system, never installed into the venv), so
-# when this file is run directly as `uv run scripts/generate_keypair.py`, Python puts scripts/
-# on sys.path[0] instead of the repo root and `app` is not importable. Fix that up before
-# reaching for it, so the documented invocation keeps working without an editable install.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.keys import compute_kid
 
