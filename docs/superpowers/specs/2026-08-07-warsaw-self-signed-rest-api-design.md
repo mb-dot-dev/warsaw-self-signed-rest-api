@@ -91,15 +91,21 @@ Mirrors helsinki, with `keys.py` and `jwks.py` added and `auth.py` reworked.
 | --- | --- | --- |
 | `app/main.py` | `Logger`, `Metrics(namespace="Warsaw")`, `APIGatewayRestResolver`, router registration, cached `init_config()`, `lambda_handler` | all routers |
 | `app/clients.py` | cached `get_sqs_client()` | boto3 |
-| `app/keys.py` | load and cache the client public key from a configured path; derive warsaw's public key from the config private key; compute RFC 7638 `kid` thumbprints | `cryptography`, `mb_config` |
-| `app/auth.py` | `AuthConfig`; `authenticate_client(assertion) -> str` returning the client id, raising a typed error on any failure | `app/keys.py`, `pyjwt` |
-| `app/jwt.py` | `JwtConfig`; `jwt_bearer` middleware verifying RS256 bearer tokens against warsaw's derived public key | `app/keys.py`, `pyjwt` |
+| `app/keys.py` | **pure** key helpers, no config access and no caching: read a PEM from a path, derive a public PEM from a private PEM, convert a public PEM to a JWK, compute an RFC 7638 `kid` | `cryptography`, `pyjwt` |
+| `app/auth.py` | `AuthConfig`; cached `get_client_public_key()`; `authenticate_client(assertion) -> str` returning the client id, raising `ClientAuthError(reason)` on any failure | `app/keys.py`, `pyjwt` |
+| `app/jwt.py` | `JwtConfig`; cached `get_signing_public_key()` / `get_signing_kid()`; `jwt_bearer` middleware verifying RS256 bearer tokens | `app/keys.py`, `pyjwt` |
 | `app/oauth.py` | `POST /oauth/token` router; parse the token request, call `authenticate_client`, mint the access token | `app/auth.py`, `app/jwt.py`, `app/keys.py` |
 | `app/jwks.py` | `GET /.well-known/jwks.json` router | `app/keys.py` |
 | `app/producer.py` | `POST /` router behind `jwt_bearer`; `ProducerConfig`; enqueue to SQS | `app/clients.py`, `app/jwt.py` |
 
 Each config object follows the established pattern: a `BaseModel` with a `section_name`
 `ClassVar` and a `@cache`d `get_*_config()` reading from `mb_config.get_config()`.
+
+`keys.py` deliberately holds no configuration and no cache. If it read
+`auth:client_public_key_path` itself it would have to import `auth.py`, which already imports
+`keys.py` — a circular import. Keeping it a pure function module puts caching at the two
+consumers that own the relevant config section instead, and makes every key operation testable
+with literal PEM strings and no config setup.
 
 ## Configuration
 
