@@ -78,6 +78,35 @@ def test_generate_keypair_overwrites_when_forced(tmp_path: Path) -> None:
     assert (tmp_path / "client_private.pem").read_text() != "existing"
 
 
+def test_generate_keypair_refuses_when_only_public_half_exists(tmp_path: Path) -> None:
+    public_out = tmp_path / "pub.pem"
+    public_out.write_text("existing public key")
+    private_path = tmp_path / "client_private.pem"
+
+    with pytest.raises(FileExistsError):
+        generate_keypair(name="client", out_dir=tmp_path, public_out=public_out, key_size=2048, force=False)
+
+    assert not private_path.exists()
+    assert public_out.read_text() == "existing public key"
+
+
+def test_generate_keypair_overwrites_both_when_forced_with_only_public_existing(tmp_path: Path) -> None:
+    public_out = tmp_path / "pub.pem"
+    public_out.write_text("existing public key")
+
+    private_path, public_path = generate_keypair(
+        name="client", out_dir=tmp_path, public_out=public_out, key_size=2048, force=True
+    )
+
+    private_key = serialization.load_pem_private_key(private_path.read_bytes(), password=None)
+    expected = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    assert public_path.read_bytes() == expected
+
+
 def test_generate_keypair_creates_missing_directories(tmp_path: Path) -> None:
     generate_keypair(
         name="warsaw",

@@ -42,10 +42,22 @@ def compute_kid(public_key_pem: str) -> str:
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
-def _write(path: Path, content: str, *, force: bool, mode: int | None = None) -> None:
-    if path.exists() and not force:
-        msg = f"{path} already exists; pass --force to overwrite"
+def _check_can_write(*paths: Path, force: bool) -> None:
+    """Raise FileExistsError if any of paths already exist, unless force is set.
+
+    Checked up front, before any file in the set is written, so a partially-generated
+    keypair can never be left on disk when the guard trips.
+    """
+    if force:
+        return
+    existing = [path for path in paths if path.exists()]
+    if existing:
+        names = ", ".join(str(path) for path in existing)
+        msg = f"{names} already exists; pass --force to overwrite"
         raise FileExistsError(msg)
+
+
+def _write(path: Path, content: str, *, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     if mode is not None:
@@ -63,6 +75,11 @@ def generate_keypair(
     """Generate an RSA keypair, returning the (private, public) paths written."""
     private_path = out_dir / f"{name}_private.pem"
 
+    # Check both destinations before writing either one: if only the public half
+    # already existed, we must not leave a freshly-generated private key on disk
+    # that doesn't correspond to it.
+    _check_can_write(private_path, public_out, force=force)
+
     private_key = rsa.generate_private_key(public_exponent=PUBLIC_EXPONENT, key_size=key_size)
     private_pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -78,8 +95,8 @@ def generate_keypair(
         .decode()
     )
 
-    _write(private_path, private_pem, force=force, mode=PRIVATE_KEY_MODE)
-    _write(public_out, public_pem, force=force)
+    _write(private_path, private_pem, mode=PRIVATE_KEY_MODE)
+    _write(public_out, public_pem)
 
     return private_path, public_out
 
