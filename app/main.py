@@ -7,12 +7,15 @@ from aws_lambda_powertools import Logger, Metrics
 from aws_lambda_powertools.event_handler import APIGatewayRestResolver
 from mb_config.workloads import initialize_config
 
+from app.oauth import router as oauth_router
+
 if TYPE_CHECKING:
     from aws_lambda_powertools.utilities.typing import LambdaContext
 
 logger = Logger()
 metrics = Metrics(namespace="Warsaw")
 app = APIGatewayRestResolver()
+app.include_router(oauth_router)
 
 
 @cache
