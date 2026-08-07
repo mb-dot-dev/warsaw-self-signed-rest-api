@@ -323,7 +323,11 @@ Expected: all three checks pass with no files to complain about.
 
 ```bash
 git add pyproject.toml uv.lock Makefile .gitignore samconfig.toml sonar-project.properties .github/dependabot.yml app/__init__.py tests/__init__.py scripts/__init__.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "chore: scaffold project tooling and dependencies"
+=======
+git commit -m "chore: scaffold project tooling and dependencies"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -459,7 +463,11 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'scripts.generate_keypa
 
 - [ ] **Step 3: Implement the script**
 
+<<<<<<< HEAD
 Create `scripts/generate_keypair.py`. It carries its own `compute_kid` for now because `app/keys.py` does not exist until Task 4; **Task 4 Step 5 removes this copy and imports the shared one.** Do not leave two implementations behind.
+=======
+Create `scripts/generate_keypair.py`. Note `compute_kid` is duplicated here rather than imported from `app.keys` (Task 4) — the script must run standalone before the app exists, and this is the only duplicated logic in the repo.
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 
 ```python
 """Generate an RSA keypair for warsaw's private_key_jwt flow.
@@ -623,7 +631,11 @@ Expected: both pass.
 
 ```bash
 git add scripts/generate_keypair.py tests/test_generate_keypair.py Makefile
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add RSA keypair generator script"
+=======
+git commit -m "feat: add RSA keypair generator script"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -969,7 +981,11 @@ Expected: PASS
 
 ```bash
 git add app/configs app/main.py app/clients.py tests/conftest.py tests/test_main.py tests/test_clients.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add config layer, app bootstrap, and test fixtures"
+=======
+git commit -m "feat: add config layer, app bootstrap, and test fixtures"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -1129,6 +1145,7 @@ def compute_kid(public_key_pem: str) -> str:
 Run: `uv run --frozen pytest tests/test_keys.py -v`
 Expected: all 8 tests PASS
 
+<<<<<<< HEAD
 - [ ] **Step 5: Remove the duplicated `compute_kid` from the generator script**
 
 `scripts/generate_keypair.py` carried its own copy because `app/keys.py` did not exist yet. Now it does, and two implementations of a security-relevant identifier must not drift apart. In `scripts/generate_keypair.py`:
@@ -1148,15 +1165,26 @@ rm -rf /tmp/warsaw-keytest
 Expected: all tests PASS, and the script prints a `kid` line.
 
 - [ ] **Step 7: Verify lint**
+=======
+- [ ] **Step 5: Verify lint**
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 
 Run: `make lint`
 Expected: PASS
 
+<<<<<<< HEAD
 - [ ] **Step 8: Commit**
 
 ```bash
 git add app/keys.py tests/test_keys.py scripts/generate_keypair.py
 git commit --no-gpg-sign -m "feat: add pure RSA key helpers"
+=======
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/keys.py tests/test_keys.py
+git commit -m "feat: add pure RSA key helpers"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -1431,7 +1459,11 @@ Expected: both pass.
 
 ```bash
 git add app/auth.py tests/test_auth.py tests/conftest.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add private_key_jwt client assertion validation"
+=======
+git commit -m "feat: add private_key_jwt client assertion validation"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -1749,7 +1781,11 @@ Expected: both pass.
 
 ```bash
 git add app/jwt.py tests/test_jwt.py tests/conftest.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add signing key derivation and RS256 bearer middleware"
+=======
+git commit -m "feat: add signing key derivation and RS256 bearer middleware"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -2173,7 +2209,11 @@ Expected: both pass.
 
 ```bash
 git add app/oauth.py app/main.py tests/test_oauth.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add private_key_jwt token endpoint"
+=======
+git commit -m "feat: add private_key_jwt token endpoint"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -2335,7 +2375,11 @@ Expected: both pass.
 
 ```bash
 git add app/jwks.py app/main.py tests/test_jwks.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add JWKS endpoint"
+=======
+git commit -m "feat: add JWKS endpoint"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -2619,7 +2663,11 @@ Expected: both pass.
 
 ```bash
 git add app/producer.py app/main.py tests/test_producer.py tests/conftest.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add authenticated SQS producer endpoint"
+=======
+git commit -m "feat: add authenticated SQS producer endpoint"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -2841,7 +2889,11 @@ Expected: `clean`. `out/` must not appear in `git status`.
 
 ```bash
 git add app/keys/client_public.pem tests/test_committed_client_key.py tests/test_end_to_end.py tests/test_prod_config.py
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add committed client key with end-to-end and prod config tests"
+=======
+git commit -m "feat: add committed client key with end-to-end and prod config tests"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -3092,7 +3144,11 @@ Expected: `0`.
 ```bash
 rm -rf build lambda.zip requirements.txt
 git add aws/resource-group.yml aws/iam-role.yml template.yaml
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "feat: add resource group, IAM role, and SAM templates"
+=======
+git commit -m "feat: add resource group, IAM role, and SAM templates"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
@@ -3374,7 +3430,11 @@ Expected: everything passes.
 
 ```bash
 git add .github/workflows/main.yaml README.md
+<<<<<<< HEAD
 git commit --no-gpg-sign -m "ci: add build and deploy pipeline, document the API"
+=======
+git commit -m "ci: add build and deploy pipeline, document the API"
+>>>>>>> ca6725b (Add implementation plan for warsaw private_key_jwt REST API)
 ```
 
 ---
