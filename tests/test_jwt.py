@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+import jwt
 import pytest
 
 from app.jwt import get_jwt_config, get_signing_kid, get_signing_public_key, jwt_bearer
 from app.keys import compute_kid
 from app.main import init_config
-from tests.conftest import AUDIENCE, ISSUER, generate_non_rsa_private_key_pem
+from tests.conftest import ALLOWED_CLIENT_ID, AUDIENCE, ISSUER, generate_non_rsa_private_key_pem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -95,6 +97,38 @@ def test_jwt_bearer_rejects_non_bearer_scheme(
     lambda_context: LambdaContext,
 ) -> None:
     event = make_event("GET", "/protected", headers={"Authorization": "Basic dXNlcjpwYXNz"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
+def test_jwt_bearer_accepts_case_insensitive_bearer_scheme(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+) -> None:
+    # RFC 6750 §2.1: the scheme name is case-insensitive. A lowercase "bearer" must be
+    # accepted just like "Bearer".
+    event = make_event("GET", "/protected", headers={"Authorization": f"bearer {make_token()}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"]) == {"message": "ok"}
+
+
+def test_jwt_bearer_rejects_a_token_without_exp(
+    make_event: Callable[..., dict[str, Any]],
+    signing_keys: tuple[str, str],
+    lambda_context: LambdaContext,
+) -> None:
+    # Defense-in-depth: even though we always mint tokens with an exp, verification must
+    # require it. Without `require`, a token missing exp would be treated as "no expiry to
+    # check" and never expire. Pins the `require` option in jwt_bearer.
+    claims = {"iss": ISSUER, "sub": ALLOWED_CLIENT_ID, "aud": AUDIENCE, "iat": int(time.time())}
+    token = jwt.encode(claims, signing_keys[0], algorithm="RS256")
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {token}"})
 
     response = _resolve(event, lambda_context)
 
