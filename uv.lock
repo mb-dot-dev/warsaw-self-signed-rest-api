@@ -825,7 +825,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "aws-lambda-powertools", extras = ["aws-sdk"], specifier = ">=3.31.0" },
+    { name = "aws-lambda-powertools", extras = ["aws-sdk"], specifier = ">=3.31.1" },
     { name = "cfn-lint", specifier = ">=1.52.1" },
     { name = "moto", extras = ["sqs"], specifier = ">=5.2.2" },
     { name = "pytest", specifier = ">=9.1.1" },
