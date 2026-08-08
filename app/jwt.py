@@ -21,7 +21,6 @@ logger = Logger()
 metrics = Metrics(namespace="Warsaw")
 
 _BEARER_PREFIX = "Bearer "
-_REQUIRED_CLAIMS = ["exp", "iss", "aud"]
 
 
 class JwtConfig(BaseModel):
@@ -82,7 +81,9 @@ def jwt_bearer(app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Resp
     jwt_config = get_jwt_config()
 
     auth_header = app.current_event.headers.get("Authorization", "")
-    if not auth_header.lower().startswith(_BEARER_PREFIX.lower()):
+    # Compare only the scheme prefix case-insensitively (RFC 6750 §2.1) so the JWT itself
+    # is never copied/lowercased on every request.
+    if auth_header[: len(_BEARER_PREFIX)].lower() != _BEARER_PREFIX.lower():
         return _unauthorized("Unauthorized")
 
     token = auth_header[len(_BEARER_PREFIX) :]
@@ -102,7 +103,7 @@ def jwt_bearer(app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Resp
             audience=jwt_config.audience,
             issuer=jwt_config.issuer,
             leeway=jwt_config.leeway_seconds,
-            options={"require": _REQUIRED_CLAIMS},
+            options={"require": ["exp", "iss", "aud"]},
         )
     except jwt.ExpiredSignatureError:
         return _unauthorized("Token has expired")
