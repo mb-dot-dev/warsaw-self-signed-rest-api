@@ -13,7 +13,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "aws-lambda-powertools[aws-sdk]>=3.31.0",
+    "aws-lambda-powertools[aws-sdk]>=3.31.1",
     "cfn-lint>=1.52.1",
     "moto[sqs]>=5.2.2",
     "pytest>=9.1.1",
