@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless REST API with private_key_jwt authentication
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Name of the project
+  FunctionName:
+    Type: String
+    Description: Name of the Lambda function
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: ARN of the existing IAM role for the Lambda execution
+
+  AllowedIps:
+    Type: AWS::SSM::Parameter::Value<List<String>>
+    Description: Comma-separated list of allowed source IP addresses
+    Default: /allowed-ips/all
+  QueueUrl:
+    Type: AWS::SSM::Parameter::Value<String>
+    Description: URL of the existing SQS queue
+    Default: /sqs/oslo/queue-url
+
+Outputs:
+  FunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt Function.Arn
+
+  FunctionName:
+    Description: Name of the Lambda function
+    Value: !Ref FunctionName
+
+  ApiGatewayUrl:
+    Description: URL of the API Gateway endpoint
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/"
+
+Resources:
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      EndpointConfiguration:
+        Type: REGIONAL
+      Auth:
+        ResourcePolicy:
+          CustomStatements:
+            - Effect: Allow
+              Principal: "*"
+              Action: execute-api:Invoke
+              Resource: "arn:aws:execute-api:*:*:*/*/*/*"
+            - Effect: Deny
+              Principal: "*"
+              Action: execute-api:Invoke
+              Resource: "arn:aws:execute-api:*:*:*/*/*/*"
+              Condition:
+                NotIpAddress:
+                  aws:SourceIp: !Ref AllowedIps
+
+  Function:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Runtime: python3.14
+      Handler: app.main.lambda_handler
+      CodeUri: lambda.zip
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: !Ref FunctionName
+          POWERTOOLS_LOG_LEVEL: INFO
+          CONFIG_ENV: prod
+          PRODUCER__QUEUE_URL: !Ref QueueUrl
+      Tags:
+        Project: !Ref ProjectName
+        Name: !Ref FunctionName
+      Events:
+        ApiEventRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /
+            Method: ANY
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /{proxy+}
+            Method: ANY
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${FunctionName}"
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Name
+          Value: !Sub "/aws/lambda/${FunctionName}"
