@@ -33,7 +33,7 @@ Outputs:
 
   ApiGatewayUrl:
     Description: URL of the API Gateway endpoint
-    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
 
 Resources:
   ApiGateway:
