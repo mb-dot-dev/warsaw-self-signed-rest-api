@@ -78,6 +78,7 @@ def _lambda_env(
 def _reset_config_cache() -> None:
     from app.auth import get_auth_config, get_client_public_key
     from app.jwt import get_jwt_config, get_signing_kid, get_signing_public_key
+    from app.producer import get_producer_config
 
     reset_config()
     init_config.cache_clear()
@@ -86,6 +87,14 @@ def _reset_config_cache() -> None:
     get_jwt_config.cache_clear()
     get_signing_public_key.cache_clear()
     get_signing_kid.cache_clear()
+    get_producer_config.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_sqs_client() -> None:
+    from app.clients import get_sqs_client
+
+    get_sqs_client.cache_clear()
 
 
 class LambdaContext:

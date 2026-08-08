@@ -9,6 +9,7 @@ from mb_config.workloads import initialize_config
 
 from app.jwks import router as jwks_router
 from app.oauth import router as oauth_router
+from app.producer import router as producer_router
 
 if TYPE_CHECKING:
     from aws_lambda_powertools.utilities.typing import LambdaContext
@@ -18,6 +19,7 @@ metrics = Metrics(namespace="Warsaw")
 app = APIGatewayRestResolver()
 app.include_router(oauth_router)
 app.include_router(jwks_router)
+app.include_router(producer_router)
 
 
 @cache
