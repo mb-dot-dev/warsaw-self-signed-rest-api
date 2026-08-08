@@ -4,11 +4,12 @@ import json
 from typing import TYPE_CHECKING, Any
 import urllib.parse
 
+from cryptography.hazmat.primitives import serialization
 import jwt
 
 from app.main import lambda_handler
 from app.oauth import CLIENT_ASSERTION_TYPE, GRANT_TYPE, _parse_token_request
-from tests.conftest import ALLOWED_CLIENT_ID, AUDIENCE, ISSUER
+from tests.conftest import ALLOWED_CLIENT_ID, AUDIENCE, ISSUER, generate_non_rsa_private_key_pem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -323,3 +324,52 @@ def test_issue_token_returns_server_error_when_signing_private_key_is_malformed(
     assert response["statusCode"] == 500
     assert json.loads(response["body"])["error"] == "server_error"
     assert ("reason", "Misconfigured") in dimensions
+
+
+def test_issue_token_returns_server_error_when_signing_key_is_valid_but_not_rsa(
+    make_event: Callable[..., dict[str, Any]],
+    make_assertion: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A valid non-RSA signing key raises TypeError rather than ValueError; it must still
+    # produce the clean 500 + Misconfigured metric, not an unhandled 502.
+    from app import oauth
+
+    dimensions: list[tuple[str, str]] = []
+    monkeypatch.setattr(oauth.metrics, "add_dimension", lambda *, name, value: dimensions.append((name, value)))
+    monkeypatch.setenv("JWT__PRIVATE_KEY", generate_non_rsa_private_key_pem())
+
+    event = make_event("POST", "/oauth/token", headers={"Content-Type": FORM}, body=_token_request(make_assertion()))
+
+    response = lambda_handler(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"])["error"] == "server_error"
+    assert ("reason", "Misconfigured") in dimensions
+
+
+def test_issue_token_returns_server_error_when_client_public_key_is_valid_but_not_rsa(
+    make_event: Callable[..., dict[str, Any]],
+    make_assertion: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Same fault on the verifying side: a valid but non-RSA client public key.
+    key_path = tmp_path / "not_rsa_public.pem"
+    private_key = serialization.load_pem_private_key(generate_non_rsa_private_key_pem().encode(), password=None)
+    key_path.write_bytes(
+        private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+    monkeypatch.setenv("AUTH__CLIENT_PUBLIC_KEY_PATH", str(key_path))
+
+    event = make_event("POST", "/oauth/token", headers={"Content-Type": FORM}, body=_token_request(make_assertion()))
+
+    response = lambda_handler(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"])["error"] == "server_error"

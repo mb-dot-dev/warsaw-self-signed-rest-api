@@ -9,6 +9,7 @@ from jwt.algorithms import RSAAlgorithm
 
 from app.jwt import get_signing_kid
 from app.main import lambda_handler
+from tests.conftest import generate_non_rsa_private_key_pem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -125,3 +126,19 @@ def test_jwks_emits_a_metric_when_signing_private_key_is_malformed(
     lambda_handler(make_event("GET", "/.well-known/jwks.json"), lambda_context)
 
     assert "SigningKeyUnavailable" in emitted
+
+
+def test_jwks_returns_server_error_when_signing_key_is_valid_but_not_rsa(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Distinct from a corrupt PEM: this key parses fine, so cryptography raises nothing and
+    # the failure surfaces as a TypeError from app.keys' isinstance guard. Catching only
+    # ValueError here would let it escape as an unhandled 502.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", generate_non_rsa_private_key_pem())
+
+    response = lambda_handler(make_event("GET", "/.well-known/jwks.json"), lambda_context)
+
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"])["message"] == "Internal Server Error"

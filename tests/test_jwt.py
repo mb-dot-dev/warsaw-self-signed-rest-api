@@ -9,7 +9,7 @@ import pytest
 from app.jwt import get_jwt_config, get_signing_kid, get_signing_public_key, jwt_bearer
 from app.keys import compute_kid
 from app.main import init_config
-from tests.conftest import AUDIENCE, ISSUER
+from tests.conftest import AUDIENCE, ISSUER, generate_non_rsa_private_key_pem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -56,7 +56,15 @@ def test_get_signing_kid_matches_the_public_key_thumbprint(signing_keys: tuple[s
 
 
 def test_get_signing_kid_is_cached() -> None:
-    assert get_signing_kid() == get_signing_kid()
+    # compute_kid is pure, so asserting get_signing_kid() == get_signing_kid() would pass
+    # with @cache removed entirely. Inspecting the cache proves the second call was served
+    # from it rather than recomputing the thumbprint on every request.
+    get_signing_kid()
+    hits_before = get_signing_kid.cache_info().hits
+
+    get_signing_kid()
+
+    assert get_signing_kid.cache_info().hits == hits_before + 1
 
 
 def test_jwt_bearer_accepts_a_valid_token(
@@ -209,3 +217,22 @@ def test_jwt_bearer_emits_signing_key_unavailable_not_token_rejected(
 
     assert "SigningKeyUnavailable" in emitted
     assert "TokenRejected" not in emitted
+
+
+def test_jwt_bearer_returns_server_error_when_signing_key_is_valid_but_not_rsa(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A valid non-RSA key raises TypeError, not ValueError, from app.keys' isinstance guard.
+    # It must still be a clean 500 and never a 401 — the caller's token is not the problem.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", generate_non_rsa_private_key_pem())
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": "Bearer irrelevant"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert response["statusCode"] != 401
+    assert json.loads(response["body"])["message"] == "Internal Server Error"

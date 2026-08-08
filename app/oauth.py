@@ -82,8 +82,10 @@ def issue_token() -> Response:
         metrics.add_dimension(name="reason", value=error.reason)
         logger.warning("Client assertion rejected", extra={"reason": error.reason})
         return _error(401, "invalid_client", "Client authentication failed")
-    except jwt.InvalidKeyError, OSError:
-        # The configured client public key is missing or unreadable.
+    except jwt.InvalidKeyError, OSError, TypeError, ValueError:
+        # The configured client public key is missing, unreadable, malformed, or not RSA.
+        # TypeError comes from app.keys' isinstance guard when a valid but non-RSA key
+        # (e.g. Ed25519) is configured; ValueError from cryptography on an unparseable PEM.
         return _misconfigured_error("Client authentication failed due to a server misconfiguration")
 
     try:
@@ -105,11 +107,12 @@ def issue_token() -> Response:
             algorithm="RS256",
             headers={"kid": get_signing_kid()},
         )
-    except ValueError:
-        # The configured signing private key is missing or malformed (e.g. `cryptography`
-        # rejecting an unparseable PEM while deriving the public key/kid). Mirrors the
-        # client-key handling above — same failure mode, same clean 500 instead of an
-        # unhandled exception surfacing as an opaque Lambda 502.
+    except ValueError, TypeError, jwt.InvalidKeyError:
+        # The configured signing private key is missing, malformed, or not RSA: ValueError
+        # from `cryptography` on an unparseable PEM, TypeError from app.keys' isinstance
+        # guard on a valid but non-RSA key (e.g. Ed25519), InvalidKeyError from PyJWT.
+        # Mirrors the client-key handling above — same failure mode, same clean 500
+        # instead of an unhandled exception surfacing as an opaque Lambda 502.
         return _misconfigured_error("Token issuance failed due to a server misconfiguration")
 
     logger.info("Access token issued", extra={"clientId": client_id})

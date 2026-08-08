@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from cryptography.hazmat.primitives import serialization
 import pytest
 
 from app.keys import compute_kid, derive_public_key_pem, load_public_key_pem, public_key_to_jwk
@@ -37,7 +38,16 @@ def test_public_key_to_jwk_contains_only_rsa_material(client_keys: tuple[str, st
 
 
 def test_compute_kid_is_stable_for_the_same_key(client_keys: tuple[str, str]) -> None:
-    assert compute_kid(client_keys[1]) == compute_kid(client_keys[1])
+    # Re-serialise the same key through a PEM round trip so the two inputs are distinct
+    # strings representing one key. Comparing compute_kid(x) to compute_kid(x) would be
+    # an assertion against itself and would pass for any implementation at all.
+    public_key = serialization.load_pem_public_key(client_keys[1].encode())
+    reserialised = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
+
+    assert compute_kid(reserialised) == compute_kid(client_keys[1])
 
 
 def test_compute_kid_differs_between_keys(

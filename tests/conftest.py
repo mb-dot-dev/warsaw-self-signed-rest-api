@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import uuid
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import ed25519, rsa
 import jwt
 from mb_config.config_manager import reset_config
 import pytest
@@ -21,6 +21,21 @@ AUDIENCE = "api://default"
 ALLOWED_CLIENT_ID = "test-client"
 QUEUE_NAME = "test-queue"
 QUEUE_URL = f"https://sqs.eu-west-1.amazonaws.com/123456789012/{QUEUE_NAME}"
+
+
+def generate_non_rsa_private_key_pem() -> str:
+    """A *valid* PEM that is simply not RSA.
+
+    Distinct from a corrupt PEM: cryptography parses this happily, and the failure only
+    appears later in app.keys' isinstance guard as a TypeError rather than a ValueError.
+    Configuring one of these is a plausible operator mistake.
+    """
+    key = ed25519.Ed25519PrivateKey.generate()
+    return key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
 
 
 def _generate_keypair() -> tuple[str, str]:

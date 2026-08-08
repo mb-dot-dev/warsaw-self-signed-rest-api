@@ -21,10 +21,12 @@ CACHE_CONTROL = "public, max-age=300"
 def jwks() -> Response:
     try:
         signing_public_key = get_signing_public_key()
-    except ValueError:
-        # The configured signing private key is missing or malformed. A server
-        # misconfiguration, not a client-facing fault — same failure mode as the
-        # jwt_bearer middleware, so it gets the same clean 500 and metric.
+    except ValueError, TypeError:
+        # The configured signing private key is missing, malformed (ValueError from
+        # cryptography), or valid but not RSA (TypeError from app.keys' isinstance
+        # guard, e.g. an Ed25519 key). A server misconfiguration, not a client-facing
+        # fault — same failure mode as the jwt_bearer middleware, so it gets the same
+        # clean 500 and metric.
         metrics.add_metric(name="SigningKeyUnavailable", unit=MetricUnit.Count, value=1)
         logger.exception("JWKS publication failed due to a server misconfiguration")
         return Response(

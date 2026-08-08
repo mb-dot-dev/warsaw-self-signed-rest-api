@@ -88,7 +88,9 @@ def jwt_bearer(app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Resp
 
     try:
         signing_public_key = get_signing_public_key()
-    except ValueError:
+    except ValueError, TypeError:
+        # ValueError: cryptography rejecting an unparseable PEM.
+        # TypeError: app.keys' isinstance guard on a valid but non-RSA key (e.g. Ed25519).
         return _signing_key_unavailable("Token verification failed due to a server misconfiguration")
 
     try:
