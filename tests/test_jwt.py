@@ -161,3 +161,51 @@ def test_rejected_token_emits_a_metric(
     _resolve(make_event("GET", "/protected"), lambda_context)
 
     assert "TokenRejected" in emitted
+
+
+def test_jwt_bearer_returns_server_error_when_signing_private_key_is_malformed(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A malformed JWT__PRIVATE_KEY must fail cleanly (500), not raise an unhandled
+    # ValueError (opaque 502), and must NOT be reported as a 401 — a broken server key
+    # is not a bad token, and telling the caller their token is invalid would mislead.
+    # The module's autouse `_init_config` fixture already loaded config with the good
+    # key during setup, so config has to be reloaded here to pick up the bad one.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token()}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert response["statusCode"] != 401
+    assert json.loads(response["body"]) == {"message": "Internal Server Error"}
+
+
+def test_jwt_bearer_emits_signing_key_unavailable_not_token_rejected(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import jwt as app_jwt
+
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        app_jwt.metrics,
+        "add_metric",
+        lambda *, name, unit, value: emitted.append(name),  # noqa: ARG005
+    )
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token()}"})
+
+    _resolve(event, lambda_context)
+
+    assert "SigningKeyUnavailable" in emitted
+    assert "TokenRejected" not in emitted

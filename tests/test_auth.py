@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -88,6 +89,31 @@ def test_authenticate_client_rejects_hs256_algorithm_confusion(client_keys: tupl
         authenticate_client(forged, ISSUER)
 
     assert error.value.reason == REASON_MALFORMED
+
+
+def test_authenticate_client_rejects_alg_none(client_keys: tuple[str, str]) -> None:
+    # Pins the `algorithms=["RS256"]` allowlist in authenticate_client: without it, a
+    # forged `alg: none` token with an empty signature would be accepted as valid. PyJWT
+    # >=2.10 refuses to jwt.encode() an unsecured token, so the forged token is assembled
+    # by hand here, same as the HS256 confusion test above. If this test starts failing,
+    # it means the allowlist was widened to include "none" (or dropped) — do not "fix"
+    # this test by loosening it; fix the allowlist instead.
+    now = int(time.time())
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none", "typ": "JWT"}).encode()).rstrip(b"=")
+    payload = base64.urlsafe_b64encode(
+        json.dumps(
+            {
+                "iss": ALLOWED_CLIENT_ID,
+                "sub": ALLOWED_CLIENT_ID,
+                "aud": ISSUER,
+                "exp": now + 60,
+            }
+        ).encode()
+    ).rstrip(b"=")
+    forged = (header + b"." + payload + b".").decode()
+
+    with pytest.raises(ClientAuthError):
+        authenticate_client(forged, ISSUER)
 
 
 def test_authenticate_client_rejects_expired_assertion(make_assertion: Callable[..., str]) -> None:

@@ -4,7 +4,7 @@ from functools import cache
 import json
 from typing import TYPE_CHECKING, ClassVar
 
-from aws_lambda_powertools import Metrics
+from aws_lambda_powertools import Logger, Metrics
 from aws_lambda_powertools.event_handler import Response
 from aws_lambda_powertools.metrics import MetricUnit
 import jwt
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from aws_lambda_powertools.event_handler import ApiGatewayResolver
     from aws_lambda_powertools.event_handler.middlewares import NextMiddleware
 
+logger = Logger()
 metrics = Metrics(namespace="Warsaw")
 
 _BEARER_PREFIX = "Bearer "
@@ -62,6 +63,20 @@ def _unauthorized(message: str) -> Response:
     )
 
 
+def _signing_key_unavailable(log_message: str) -> Response:
+    # The configured signing private key is missing or malformed. This is a server
+    # misconfiguration, not a bad token, so it must not surface as (or be counted
+    # alongside) a 401 TokenRejected — an unauthenticated caller must not be told
+    # their token is invalid when the real fault is on our side.
+    metrics.add_metric(name="SigningKeyUnavailable", unit=MetricUnit.Count, value=1)
+    logger.exception(log_message)
+    return Response(
+        status_code=500,
+        content_type="application/json",
+        body=json.dumps({"message": "Internal Server Error"}),
+    )
+
+
 def jwt_bearer(app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Response:
     jwt_config = get_jwt_config()
 
@@ -72,9 +87,14 @@ def jwt_bearer(app: ApiGatewayResolver, next_middleware: NextMiddleware) -> Resp
     token = auth_header[len(_BEARER_PREFIX) :]
 
     try:
+        signing_public_key = get_signing_public_key()
+    except ValueError:
+        return _signing_key_unavailable("Token verification failed due to a server misconfiguration")
+
+    try:
         jwt.decode(
             token,
-            get_signing_public_key(),
+            signing_public_key,
             algorithms=["RS256"],
             audience=jwt_config.audience,
             issuer=jwt_config.issuer,

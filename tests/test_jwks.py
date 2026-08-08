@@ -13,6 +13,8 @@ from app.main import lambda_handler
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    import pytest
+
     from tests.conftest import LambdaContext
 
 
@@ -88,3 +90,38 @@ def test_published_jwk_verifies_a_real_issued_token(
     claims = jwt.decode(make_token(), public_key, algorithms=["RS256"], audience="api://default")
 
     assert claims["scp"] == ["openid"]
+
+
+def test_jwks_returns_server_error_when_signing_private_key_is_malformed(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A malformed JWT__PRIVATE_KEY must fail cleanly (500) rather than raise an
+    # unhandled ValueError that surfaces as an opaque API Gateway 502.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+
+    response = lambda_handler(make_event("GET", "/.well-known/jwks.json"), lambda_context)
+
+    assert response["statusCode"] == 500
+    assert json.loads(response["body"]) == {"message": "Internal Server Error"}
+
+
+def test_jwks_emits_a_metric_when_signing_private_key_is_malformed(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import jwks as app_jwks
+
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        app_jwks.metrics,
+        "add_metric",
+        lambda *, name, unit, value: emitted.append(name),  # noqa: ARG005
+    )
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+
+    lambda_handler(make_event("GET", "/.well-known/jwks.json"), lambda_context)
+
+    assert "SigningKeyUnavailable" in emitted
