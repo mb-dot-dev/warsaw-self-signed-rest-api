@@ -1,0 +1,238 @@
+from __future__ import annotations
+
+import json
+from typing import TYPE_CHECKING, Any, cast
+
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+import pytest
+
+from app.jwt import get_jwt_config, get_signing_kid, get_signing_public_key, jwt_bearer
+from app.keys import compute_kid
+from app.main import init_config
+from tests.conftest import AUDIENCE, ISSUER, generate_non_rsa_private_key_pem
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from aws_lambda_powertools.utilities.typing import LambdaContext as PowertoolsLambdaContext
+
+    from tests.conftest import LambdaContext
+
+
+@pytest.fixture(autouse=True)
+def _init_config() -> None:
+    init_config()
+
+
+def _build_resolver() -> APIGatewayRestResolver:
+    resolver = APIGatewayRestResolver()
+
+    @resolver.get("/protected", middlewares=[jwt_bearer])
+    def protected() -> dict[str, str]:
+        return {"message": "ok"}
+
+    return resolver
+
+
+def _resolve(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
+    return _build_resolver().resolve(event, cast("PowertoolsLambdaContext", context))
+
+
+def test_get_jwt_config_reads_settings(signing_keys: tuple[str, str]) -> None:
+    config = get_jwt_config()
+
+    assert config.issuer == ISSUER
+    assert config.audience == AUDIENCE
+    assert config.token_ttl_seconds == 3600
+    assert config.private_key == signing_keys[0]
+
+
+def test_get_signing_public_key_matches_the_generated_public_key(signing_keys: tuple[str, str]) -> None:
+    assert get_signing_public_key() == signing_keys[1]
+
+
+def test_get_signing_kid_matches_the_public_key_thumbprint(signing_keys: tuple[str, str]) -> None:
+    assert get_signing_kid() == compute_kid(signing_keys[1])
+
+
+def test_get_signing_kid_is_cached() -> None:
+    # compute_kid is pure, so asserting get_signing_kid() == get_signing_kid() would pass
+    # with @cache removed entirely. Inspecting the cache proves the second call was served
+    # from it rather than recomputing the thumbprint on every request.
+    get_signing_kid()
+    hits_before = get_signing_kid.cache_info().hits
+
+    get_signing_kid()
+
+    assert get_signing_kid.cache_info().hits == hits_before + 1
+
+
+def test_jwt_bearer_accepts_a_valid_token(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token()}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"]) == {"message": "ok"}
+
+
+def test_jwt_bearer_rejects_missing_authorization_header(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+) -> None:
+    response = _resolve(make_event("GET", "/protected"), lambda_context)
+
+    assert response["statusCode"] == 401
+    assert json.loads(response["body"])["message"] == "Unauthorized"
+
+
+def test_jwt_bearer_rejects_non_bearer_scheme(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event("GET", "/protected", headers={"Authorization": "Basic dXNlcjpwYXNz"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
+def test_jwt_bearer_rejects_expired_token(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token(expires_in=-120)}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+    assert json.loads(response["body"])["message"] == "Token has expired"
+
+
+def test_jwt_bearer_rejects_token_signed_with_the_client_key(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    client_keys: tuple[str, str],
+    lambda_context: LambdaContext,
+) -> None:
+    # The client's own key must not be able to mint access tokens.
+    token = make_token(signing_key=client_keys[0])
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {token}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
+def test_jwt_bearer_rejects_wrong_audience(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token(audience='other')}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
+def test_jwt_bearer_rejects_malformed_token(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event("GET", "/protected", headers={"Authorization": "Bearer not-a-jwt"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
+def test_rejected_token_emits_a_metric(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import jwt as app_jwt
+
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        app_jwt.metrics,
+        "add_metric",
+        lambda *, name, unit, value: emitted.append(name),  # noqa: ARG005
+    )
+
+    _resolve(make_event("GET", "/protected"), lambda_context)
+
+    assert "TokenRejected" in emitted
+
+
+def test_jwt_bearer_returns_server_error_when_signing_private_key_is_malformed(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A malformed JWT__PRIVATE_KEY must fail cleanly (500), not raise an unhandled
+    # ValueError (opaque 502), and must NOT be reported as a 401 — a broken server key
+    # is not a bad token, and telling the caller their token is invalid would mislead.
+    # The module's autouse `_init_config` fixture already loaded config with the good
+    # key during setup, so config has to be reloaded here to pick up the bad one.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token()}"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert response["statusCode"] != 401
+    assert json.loads(response["body"]) == {"message": "Internal Server Error"}
+
+
+def test_jwt_bearer_emits_signing_key_unavailable_not_token_rejected(
+    make_event: Callable[..., dict[str, Any]],
+    make_token: Callable[..., str],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import jwt as app_jwt
+
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        app_jwt.metrics,
+        "add_metric",
+        lambda *, name, unit, value: emitted.append(name),  # noqa: ARG005
+    )
+    monkeypatch.setenv("JWT__PRIVATE_KEY", "this is not a PEM key")
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": f"Bearer {make_token()}"})
+
+    _resolve(event, lambda_context)
+
+    assert "SigningKeyUnavailable" in emitted
+    assert "TokenRejected" not in emitted
+
+
+def test_jwt_bearer_returns_server_error_when_signing_key_is_valid_but_not_rsa(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A valid non-RSA key raises TypeError, not ValueError, from app.keys' isinstance guard.
+    # It must still be a clean 500 and never a 401 — the caller's token is not the problem.
+    monkeypatch.setenv("JWT__PRIVATE_KEY", generate_non_rsa_private_key_pem())
+    init_config.cache_clear()
+    init_config()
+    event = make_event("GET", "/protected", headers={"Authorization": "Bearer irrelevant"})
+
+    response = _resolve(event, lambda_context)
+
+    assert response["statusCode"] == 500
+    assert response["statusCode"] != 401
+    assert json.loads(response["body"])["message"] == "Internal Server Error"

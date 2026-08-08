@@ -1,0 +1,3 @@
+ssm_params:
+  "string:/projects/warsaw/allowed-client-id": "auth:allowed_client_id"
+  "secure:/projects/warsaw/jwt-private-key": "jwt:private_key"
