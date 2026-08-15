@@ -5,7 +5,7 @@ description = "REST API with private_key_jwt client authentication and self-sign
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "aws-lambda-powertools>=3.31.0",
+    "aws-lambda-powertools>=3.34.0",
     "mb-config[ssm]>=0.2.0",
     "pydantic>=2.13.4",
     "pyjwt[crypto]>=2.13",
@@ -13,14 +13,14 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "aws-lambda-powertools[aws-sdk]>=3.31.1",
-    "cfn-lint>=1.52.1",
+    "aws-lambda-powertools[aws-sdk]>=3.34.0",
+    "cfn-lint>=1.55.0",
     "moto[sqs]>=5.2.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "requests>=2.34.2",
     "ruff>=0.15.20",
-    "ty>=0.0.56",
+    "ty>=0.0.70",
 ]
 
 ##### TESTING #####
