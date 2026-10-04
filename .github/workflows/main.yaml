@@ -31,32 +31,9 @@ jobs:
 
   sonarqube:
     name: SonarQube
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: make install-dev
-
-      - name: Lint
-        run: make lint
-
-      - name: Coverage
-        run: make coverage
-
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.qualitygate.wait=true
+    uses: mb-dot-dev/reusable-workflows/.github/workflows/python-test-sonar.yaml@main
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   build-lambda-zip:
     runs-on: ubuntu-latest
