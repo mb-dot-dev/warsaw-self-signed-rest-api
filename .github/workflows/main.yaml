@@ -76,51 +76,14 @@ jobs:
 
   deploy-lambda:
     name: Deploy Lambda
-    runs-on: ubuntu-latest
     needs:
       - prepare
       - build-lambda-zip
       - deploy-iam-role
       - cfn-lint
-    outputs:
-      function_arn: ${{ steps.output.outputs.FunctionArn }}
-      function_name: ${{ steps.output.outputs.FunctionName }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Download Lambda ZIP artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: lambda-zip
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
-          aws-region: eu-central-1
-
-      - name: Install AWS SAM CLI
-        uses: aws-actions/setup-sam@89ddb14d60e682855e3fea4be85b3c56485de310 # v3
-        with:
-          version: 1.161.0
-          use-installer: true
-
-      - name: Define function stack name
-        run: |
-          echo "FUNCTION_STACK_NAME=${{ needs.prepare.outputs.project_name }}-lambda" >> "$GITHUB_ENV"
-
-      - name: SAM Deploy
-        run: |
-          sam deploy \
-            --stack-name $FUNCTION_STACK_NAME \
-            --parameter-overrides \
-            ProjectName=${{ needs.prepare.outputs.project_name }} \
-            FunctionName=${{ needs.prepare.outputs.project_name }} \
-            LambdaExecutionRoleArn=${{ fromJSON(needs.deploy-iam-role.outputs.stack-outputs-json).LambdaExecutionRoleArn }} \
-            --tags Project=${{ needs.prepare.outputs.project_name }}
-
-      - name: Output Lambda function details
-        id: output
-        run: |
-          echo "FunctionArn=$(aws cloudformation describe-stacks --stack-name $FUNCTION_STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`FunctionArn`].OutputValue' --output text)" >> "$GITHUB_OUTPUT"
-          echo "FunctionName=$(aws cloudformation describe-stacks --stack-name $FUNCTION_STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' --output text)" >> "$GITHUB_OUTPUT"
+    uses: mb-dot-dev/reusable-workflows/.github/workflows/deploy-lambda.yaml@main
+    with:
+      project: ${{ needs.prepare.outputs.project_name }}
+      lambda-execution-role-arn: ${{ fromJSON(needs.deploy-iam-role.outputs.stack-outputs-json).LambdaExecutionRoleArn }}
+    secrets:
+      DEPLOY_ROLE_ARN: ${{ secrets.DEPLOY_ROLE_ARN }}
