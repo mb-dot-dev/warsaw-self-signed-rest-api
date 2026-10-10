@@ -3,7 +3,7 @@ name = "warsaw-self-signed-rest-api"
 version = "0.1.0"
 description = "REST API with private_key_jwt client authentication and self-signed RS256 tokens"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 dependencies = [
     "aws-lambda-powertools>=3.31.0",
     "mb-config[ssm]>=0.2.0",

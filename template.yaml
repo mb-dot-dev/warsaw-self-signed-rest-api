@@ -61,7 +61,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Ref FunctionName
-      Runtime: python3.14
+      Runtime: python3.15
       Handler: app.main.lambda_handler
       CodeUri: lambda.zip
       Role: !Ref LambdaExecutionRoleArn
