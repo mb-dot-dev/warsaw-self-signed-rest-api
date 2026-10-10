@@ -286,7 +286,7 @@ Three stacks, matching helsinki's set exactly — no `sqs.yml`, no consumer.
 | --- | --- | --- |
 | resource group | `aws/resource-group.yml` | verbatim from helsinki; tag-based on `Project=warsaw` |
 | IAM role | `aws/iam-role.yml` | `sqs:SendMessage` on `/sqs/oslo/queue-arn`; `ssm:GetParameter` on `/projects/warsaw/*`; `kms:Decrypt` on `alias/aws/ssm`; `AWSLambdaBasicExecutionRole` |
-| Lambda + API | `template.yaml` | SAM; `AWS::Serverless::Api` with helsinki's IP-allowlist resource policy; `AWS::Serverless::Function` on python3.14, handler `app.main.lambda_handler`, 10s timeout, 128MB |
+| Lambda + API | `template.yaml` | SAM; `AWS::Serverless::Api` with helsinki's IP-allowlist resource policy; `AWS::Serverless::Function` on python3.15, handler `app.main.lambda_handler`, 10s timeout, 128MB |
 
 The queue is consumed as SSM-typed CloudFormation parameters — `/sqs/oslo/queue-url` into the
 function's `PRODUCER__QUEUE_URL` environment variable, `/sqs/oslo/queue-arn` into the role
@@ -317,7 +317,7 @@ would pass locally while the deployed Lambda raised on the first signing attempt
 what pulls `cryptography` into the production closure.
 
 `cryptography` ships as a compiled wheel. The existing `install-pip-ci` target already pins
-`--python-platform x86_64-manylinux2014 --python 3.14`, so the correct manylinux wheel is
+`--python-platform x86_64-manylinux2014 --python 3.15`, so the correct manylinux wheel is
 installed for Lambda; no build changes are needed, but the zip grows by roughly 10MB.
 
 The dev group is copied from helsinki unchanged.
