@@ -28,6 +28,11 @@ The assertion is a JWT signed with the client's private key (RS256) carrying `is
 set to the client id, `aud` set to `https://auth.molnarbence.dev/`, and an `exp` no more than
 300 seconds out.
 
+`scripts/call_api.sh '<json body>'` does the whole flow with `curl`: it signs the assertion
+with the client private key stored in 1Password (`Private` vault, document "warsaw client
+private key"), exchanges it for a token, and POSTs the body to `/`. It needs `op`, `openssl`
+and `jq`, plus AWS credentials unless `WARSAW_API_URL` and `WARSAW_CLIENT_ID` are set.
+
 ## Keys
 
 | Key | Location | Purpose |
