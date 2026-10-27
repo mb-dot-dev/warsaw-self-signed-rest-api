@@ -28,16 +28,36 @@ The assertion is a JWT signed with the client's private key (RS256) carrying `is
 set to the client id, `aud` set to `https://auth.molnarbence.dev/`, and an `exp` no more than
 300 seconds out.
 
-`scripts/call_api.sh '<json body>'` does the whole flow with `curl`: it signs the assertion
-with the client private key stored in 1Password (`Private` vault, document "warsaw client
-private key"), exchanges it for a token, and POSTs the body to `/`. It needs `op`, `openssl`
-and `jq`, plus AWS credentials unless `WARSAW_API_URL` and `WARSAW_CLIENT_ID` are set.
+## Calling the API
+
+`scripts/call_api.py` does the whole flow: it signs the assertion, exchanges it for a token,
+and POSTs a JSON body to `/`.
+
+```bash
+make install-dev   # the script uses httpx2 from the dev dependencies
+op run --env-file op.env -- uv run python -m scripts.call_api '{"hello": "world"}'
+# {"message": "Accepted"}
+```
+
+The script reads its configuration only from environment variables. `op.env` maps each one to
+a 1Password secret reference, and `op run` resolves them and passes them to the script for that
+one process. The private key is never written to disk, and no AWS credentials are needed.
+
+| Env variable | `op.env` reference (`Private` vault, document "warsaw client private key") | Holds |
+| --- | --- | --- |
+| `WARSAW_API_URL` | `api_url` field | API Gateway URL |
+| `WARSAW_CLIENT_ID` | `client_id` field | client id (`warsaw-cli`) |
+| `WARSAW_CLIENT_PRIVATE_KEY` | `client_private.pem` (the document file) | client private key (PEM) |
+
+`op.env` holds only references, not secrets, so it is committed. To use a different item or
+vault, edit `op.env`. If you change the client id in SSM (`/projects/warsaw/allowed-client-id`),
+update the `client_id` field to match.
 
 ## Keys
 
 | Key | Location | Purpose |
 | --- | --- | --- |
-| client private | held by the client only | signs the client assertion |
+| client private | 1Password (see [Calling the API](#calling-the-api)) | signs the client assertion |
 | client public | `app/keys/client_public.pem` | verifies the assertion |
 | signing private | SSM `/projects/warsaw/jwt-private-key` | signs access tokens |
 | signing public | derived at runtime | served at `/.well-known/jwks.json` |
@@ -85,8 +105,15 @@ Not part of the plan's tasks — these are the manual steps needed once before t
    aws ssm put-parameter --name /projects/warsaw/allowed-client-id --type String \
      --overwrite --value "<the agreed client id>"
    ```
-3. Deliver `out/client_private.pem` (from Task 10) to the client over a secure channel, then
-   delete the local copy.
+3. `make keypair-client`, commit `app/keys/client_public.pem`, then store the private key in
+   1Password and delete the local copy:
+   ```bash
+   op document create out/client_private.pem --vault Private --title "warsaw client private key"
+   op item edit "warsaw client private key" --vault Private \
+     'api_url[url]=<ApiGatewayUrl stack output>' 'client_id[text]=<the agreed client id>'
+   rm out/client_private.pem
+   ```
+   Re-run this step (with `--force` on the keygen) to rotate a lost or leaked client key.
 4. Push to `main` to trigger the deploy.
 
 ## Post-deploy smoke test
