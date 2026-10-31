@@ -61,6 +61,15 @@ def _parse_token_request(body: str, content_type: str) -> dict[str, str]:
     return {key: values[0] for key, values in urllib.parse.parse_qs(body).items()}
 
 
+def _bearer_token(headers: dict[str, str]) -> str:
+    for name, value in headers.items():
+        if name.lower() == "authorization":
+            scheme, _, token = value.partition(" ")
+            if scheme.lower() == "bearer":
+                return token.strip()
+    return ""
+
+
 @router.post("/oauth/token")
 def issue_token() -> Response:
     event = router.current_event
@@ -68,6 +77,14 @@ def issue_token() -> Response:
     content_type = headers.get("content-type", headers.get("Content-Type", ""))
 
     params = _parse_token_request(event.body or "", content_type)
+
+    # The assertion may also arrive as `Authorization: Bearer <jwt>`. The body parameter
+    # wins when both are present; a header-borne assertion is implicitly a JWT bearer
+    # assertion, so client_assertion_type may then be omitted.
+    bearer = _bearer_token(headers)
+    if "client_assertion" not in params and bearer:
+        params["client_assertion"] = bearer
+        params.setdefault("client_assertion_type", CLIENT_ASSERTION_TYPE)
 
     if params.get("grant_type") != GRANT_TYPE or params.get("client_assertion_type") != CLIENT_ASSERTION_TYPE:
         metrics.add_metric(name="ClientAuthFailure", unit=MetricUnit.Count, value=1)

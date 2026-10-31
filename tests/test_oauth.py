@@ -121,6 +121,40 @@ def test_issue_token_accepts_a_json_body(
     assert response["statusCode"] == 200
 
 
+def test_issue_token_accepts_the_assertion_as_a_bearer_token(
+    make_event: Callable[..., dict[str, Any]],
+    make_assertion: Callable[..., str],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event(
+        "POST",
+        "/oauth/token",
+        headers={"Content-Type": FORM, "Authorization": f"Bearer {make_assertion()}"},
+        body=_form_body(grant_type=GRANT_TYPE),
+    )
+
+    response = lambda_handler(event, lambda_context)
+
+    assert response["statusCode"] == 200
+    assert "access_token" in json.loads(response["body"])
+
+
+def test_issue_token_rejects_an_invalid_bearer_assertion(
+    make_event: Callable[..., dict[str, Any]],
+    lambda_context: LambdaContext,
+) -> None:
+    event = make_event(
+        "POST",
+        "/oauth/token",
+        headers={"Content-Type": FORM, "authorization": "Bearer not-a-jwt"},
+        body=_form_body(grant_type=GRANT_TYPE),
+    )
+
+    response = lambda_handler(event, lambda_context)
+
+    assert response["statusCode"] == 401
+
+
 def test_issue_token_rejects_wrong_grant_type(
     make_event: Callable[..., dict[str, Any]],
     make_assertion: Callable[..., str],
